@@ -1,0 +1,181 @@
+#include "motor_driver/motor_control.hpp"
+
+VelocityNode::VelocityNode()
+: Node("velocity_node")
+{
+  RCLCPP_INFO(this->get_logger(), "Run velocity node");
+  
+  // qos setting
+  this->declare_parameter("qos_depth", 100);
+  int8_t qos_depth = 0;
+  this->get_parameter("qos_depth", qos_depth);
+  const auto QOS_RKL10V =
+    rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable().durability_volatile();
+  
+  // open config file
+  // this->declare_parameter("config_path", "");
+  // std::string config_path;
+  // this->get_parameter("config_path", config_path);
+  // YAML::Node node = YAML::LoadFile(config_path);
+  // YAML::Node dym_config = node["dynamixel_config"];
+  
+  groupSyncWriteVelocity_ = new dynamixel::GroupSyncWrite(portHandler, packetHandler, ADDR_GOAL_VELOCITY, LEN_X_GOAL_VELOCITY);
+  groupSyncReadEncoder_   = new dynamixel::GroupSyncRead(portHandler, packetHandler, ADDR_PRESENT_POSITION, LEN_X_PRESENT_POSITION);
+
+  // subscriber
+  velocity_subscriber_ =
+    this->create_subscription<GetTwist>(
+      "cmd_vel",
+      QOS_RKL10V,
+      std::bind(&VelocityNode::velocityCallBack,
+      this,
+      std::placeholders::_1));
+}
+
+VelocityNode::~VelocityNode()
+{
+}
+
+
+void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
+{
+  int32_t data, right_data, left_data;
+  left_data = 1000 * (msg->linear.x - (msg->angular.z * WHEEL_SEPARATION / 2));
+  right_data = 1000 * (-1 * (msg->linear.x - (-1 * msg->angular.z * WHEEL_SEPARATION / 2)));
+  // if (!(msg->linear.x == 0.0) && (msg->angular.z > 0.0)){
+  //   data = msg->linear.x * 1000;
+  //   left_data = data;
+  //   right_data = -1 * data / 2.0;
+  // }
+  // else if (!( msg->linear.x == 0.0)){
+  //   data = msg->linear.x * 1000;
+  //   right_data = -1 * data;
+  //   left_data = data;
+  // }
+  // else if (!(msg->angular.z == 0.0)){
+  //   data = msg->angular.z * 1000;
+  //   right_data =  data;
+  //   left_data = data;
+  // }
+  // else if ((msg->linear.x == 0) && (msg->angular.z == 0)){
+  //   right_data = 0;
+  //   left_data = 0;
+  // }
+  dxl_comm_result = writeVelocity((int64_t)left_data, (int64_t)right_data);
+}
+
+bool VelocityNode::writeVelocity(int64_t left_value, int64_t right_value)
+{
+  bool dxl_addparam_result;
+
+  uint8_t left_data_byte[4] = {0, };
+  uint8_t right_data_byte[4] = {0, };
+
+
+  left_data_byte[0] = DXL_LOBYTE(DXL_LOWORD(left_value));
+  left_data_byte[1] = DXL_HIBYTE(DXL_LOWORD(left_value));
+  left_data_byte[2] = DXL_LOBYTE(DXL_HIWORD(left_value));
+  left_data_byte[3] = DXL_HIBYTE(DXL_HIWORD(left_value));
+
+  dxl_addparam_result = groupSyncWriteVelocity_->addParam(LEFT_DXL_ID, (uint8_t*)&left_data_byte);
+  if (dxl_addparam_result != true)
+    return false;
+
+  right_data_byte[0] = DXL_LOBYTE(DXL_LOWORD(right_value));
+  right_data_byte[1] = DXL_HIBYTE(DXL_LOWORD(right_value));
+  right_data_byte[2] = DXL_LOBYTE(DXL_HIWORD(right_value));
+  right_data_byte[3] = DXL_HIBYTE(DXL_HIWORD(right_value));
+
+  dxl_addparam_result = groupSyncWriteVelocity_->addParam(RIGHT_DXL_ID, (uint8_t*)&right_data_byte);
+  if (dxl_addparam_result != true)
+    return false;
+
+  dxl_comm_result = groupSyncWriteVelocity_->txPacket();
+  if (dxl_comm_result != COMM_SUCCESS)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("velocity_node"), "Failed to sent data.");
+    return false;
+  }
+
+  groupSyncWriteVelocity_->clearParam();
+  return true;
+}
+
+
+void setupDynamixel(uint8_t dxl_id)
+{
+  // Use Position Control Mode
+  dxl_comm_result = packetHandler->write1ByteTxRx(
+    portHandler,
+    dxl_id,
+    ADDR_OPERATING_MODE,
+    VELOCITY_CONTROL,
+    &dxl_error
+  );
+
+  if (dxl_comm_result != COMM_SUCCESS) {
+    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set Position Control Mode.");
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set Position Control Mode.");
+  }
+
+  // Enable Torque of DYNAMIXEL
+  dxl_comm_result = packetHandler->write1ByteTxRx(
+    portHandler,
+    dxl_id,
+    ADDR_TORQUE_ENABLE,
+    TORQUE_ENABLE,  /* Torque ON */
+    &dxl_error
+  );
+
+  if (dxl_comm_result != COMM_SUCCESS) {
+    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to enable torque.");
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to enable torque.");
+  }
+}
+
+int main(int argc, char * argv[])
+{
+  portHandler = dynamixel::PortHandler::getPortHandler(DEVICE_NAME);
+  packetHandler = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
+
+  // Open Serial Port
+  dxl_comm_result = portHandler->openPort();
+  if (dxl_comm_result == false) {
+    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to open the port!");
+    return -1;
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to open the port.");
+  }
+
+  // Set the baudrate of the serial port (use DYNAMIXEL Baudrate)
+  dxl_comm_result = portHandler->setBaudRate(BAUDRATE);
+  if (dxl_comm_result == false) {
+    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set the baudrate!");
+    return -1;
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set the baudrate.");
+  }
+
+  setupDynamixel(BROADCAST_ID);
+
+  rclcpp::init(argc, argv);
+
+  auto readwritenode = std::make_shared<VelocityNode>();
+  rclcpp::spin(readwritenode);
+
+  // Disable Torque of DYNAMIXEL
+  packetHandler->write1ByteTxRx(
+    portHandler,
+    BROADCAST_ID,
+    ADDR_TORQUE_ENABLE,
+    TORQUE_DISABLE,
+    &dxl_error
+  );
+  portHandler->closePort();
+	
+	rclcpp::shutdown();
+
+  return 0;
+}
