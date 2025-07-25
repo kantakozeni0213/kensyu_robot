@@ -11,7 +11,7 @@ from launch_ros.actions import Node
 from launch_ros.actions import PushRosNamespace
 
 def generate_launch_description():
-    frame_id = LaunchConfiguration('frame_id', default='base_scan')
+    frame_id = LaunchConfiguration('frame_id', default='lidar_link')
     namespace = LaunchConfiguration('namespace', default='')
     return LaunchDescription([
         Node(
@@ -22,20 +22,5 @@ def generate_launch_description():
             parameters=[
                 {'frame_id': frame_id},
                 {'namespace': namespace},
-            ]),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_tf_publisher',
-            output='screen',
-            arguments=['0.0', '0.0', '0.1', '0.0', '0.0', '0.0', 'base_link', 'base_scan']
-        ),
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            output='screen',
-            parameters=[
-                {'use_sim_time': False}
             ]),
         ])

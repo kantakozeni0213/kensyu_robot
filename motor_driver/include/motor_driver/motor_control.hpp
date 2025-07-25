@@ -54,9 +54,15 @@
 #define DXL_HIBYTE(w)       ((uint8_t)((((uint64_t)(w)) >> 8) & 0xff))
 
 // robot description
-#define WHEEL_SEPARATION                0.17153
+#define WHEEL_SEPARATION                0.196 //0.17153
 #define WHEEL_RADIUS                    0.033
 #define VELOCITY_CONSTANT_VAULE         1263.632956882
+
+// math
+#define PI                              3.14159265359
+
+// motor pos
+#define MOTOR_POS                       4096
 
 dynamixel::PortHandler * portHandler;
 dynamixel::PacketHandler * packetHandler;
@@ -75,6 +81,7 @@ public:
   using GetPosition = dynamixel_sdk_custom_interfaces::srv::GetPosition;
   using GetTwist = geometry_msgs::msg::Twist;
 
+
   VelocityNode();
   virtual ~VelocityNode();
 
@@ -85,8 +92,9 @@ public:
 private:
   rclcpp::Subscription<GetTwist>::SharedPtr velocity_subscriber_;
   rclcpp::Service<GetPosition>::SharedPtr get_position_server_;
-
-  int present_position;
+  rclcpp::Time now;
+  rclcpp::Time base_time_;
+  int32_t left_pos, right_pos, now_left_pos, now_right_pos;
 };
 
 #endif

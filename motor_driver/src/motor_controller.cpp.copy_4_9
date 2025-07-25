@@ -1,18 +1,16 @@
 #include "motor_driver/motor_control.hpp"
 
 VelocityNode::VelocityNode()
-: Node("velocity_node"), base_time_(rclcpp::Time(0, 0, this->get_clock()->get_clock_type()))
+: Node("velocity_node")
 {
   RCLCPP_INFO(this->get_logger(), "Run velocity node");
-  now_left_pos = 0;
-  now_right_pos = 0;
+  
   // qos setting
   this->declare_parameter("qos_depth", 100);
   int8_t qos_depth = 0;
   this->get_parameter("qos_depth", qos_depth);
   const auto QOS_RKL10V =
     rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable().durability_volatile();
-  
   
   // open config file
   // this->declare_parameter("config_path", "");
@@ -41,51 +39,8 @@ VelocityNode::~VelocityNode()
 
 void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
 {
-  float  right_velocity, left_velocity;
-  left_velocity =  ((msg->linear.x - (msg->angular.z * WHEEL_SEPARATION / 2)) * 41.69988758) / WHEEL_RADIUS;
-  right_velocity =  ((-1 * (msg->linear.x - (-1 * msg->angular.z * WHEEL_SEPARATION / 2))) * 41.69988758 / WHEEL_RADIUS);
-  RCLCPP_INFO(get_logger(), "left_velocity: %f, right_velocity: %f", left_velocity, right_velocity);
-
-  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, LEFT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_left_pos, &dxl_error);
-  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, RIGHT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_right_pos, &dxl_error);
-  
-  // left_data = (left_velocity * 41.69988758) / WHEEL_RADIUS;
-  // right_data = (right_velocity * 41.69988758) / WHEEL_RADIUS;
-  /*velocity_constant_value =  + 41.69988758; // V = r * w
-                                         // w = ((0.229 * Goal_Velocity) * 3.14159265359 )/ 30
-                                         // Goal_Velocity = (41.69988758 * V )/ r 
-  */
-
-  // TODO
-  now = this->get_clock()->now();
-  if (!base_time_.nanoseconds() == 0){
-    // angular velocity
-    rclcpp::Duration duration = now - base_time_;
-    float duration_time = duration.seconds();
-    RCLCPP_INFO(this->get_logger(), "Duration: %f seconds", duration_time);
-    int32_t left_pos_duration = now_left_pos - left_pos,
-      right_pos_duration = now_right_pos - right_pos;
-    float left_theta = (left_duration * PI * 2) / MOTOR_POS;
-    float right_theta = (right_duration * PI * 2) / MOTOR_POS;
-    // float right_angular_velocity =
-    float velocity_duration;
-    if (left_velocity > right_velocity) {
-      velocity_duration = left_velocity - right_velocity;
-    }
-    else if (right_velocity > left_velocity) {
-      velocity_duration = right_velocity - left_velocity;
-    }
-    else {
-      velocity_duration = 0
-    }
-    float theta = velocity_duration / (2 * WHEEL_SEPARATION);
-  }
-  left_pos = now_left_pos;
-  right_pos = now_right_pos;
-  
-  base_time_ = now;
-  
-  dxl_comm_result = writeVelocity((int64_t)left_velocity, (int64_t)right_velocity);
+  int32_t data = msg->linear.x * 1000;
+  dxl_comm_result = writeVelocity((int64_t)data, (int64_t)data);
 }
 
 bool VelocityNode::writeVelocity(int64_t left_value, int64_t right_value)
@@ -117,7 +72,6 @@ bool VelocityNode::writeVelocity(int64_t left_value, int64_t right_value)
   dxl_comm_result = groupSyncWriteVelocity_->txPacket();
   if (dxl_comm_result != COMM_SUCCESS)
   {
-    RCLCPP_ERROR(rclcpp::get_logger("velocity_node"), "Failed to sent data.");
     return false;
   }
 
