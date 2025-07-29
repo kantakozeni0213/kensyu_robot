@@ -1,11 +1,9 @@
 #include "motor_driver/motor_control.hpp"
 
 VelocityNode::VelocityNode()
-: Node("velocity_node"), base_time_(rclcpp::Time(0, 0, this->get_clock()->get_clock_type()))
+: Node("velocity_node"), base_time_(rclcpp::Time(0, 0, this->get_clock()->get_clock_type())), x_(0.0), y_(0.0), theta_(0.0), now_left_pos_(0.0), now_right_pos_(0.0),
 {
   RCLCPP_INFO(this->get_logger(), "Run velocity node");
-  now_left_pos = 0;
-  now_right_pos = 0;
   // qos setting
   this->declare_parameter("qos_depth", 100);
   int8_t qos_depth = 0;
@@ -32,6 +30,8 @@ VelocityNode::VelocityNode()
       std::bind(&VelocityNode::velocityCallBack,
       this,
       std::placeholders::_1));
+  
+  odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
 }
 
 VelocityNode::~VelocityNode()
@@ -57,33 +57,52 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
   */
 
   // TODO
-  now = this->get_clock()->now();
+  now_ = this->get_clock()->now();
   if (!base_time_.nanoseconds() == 0){
-    // angular velocity
-    rclcpp::Duration duration = now - base_time_;
-    float duration_time = duration.seconds();
-    RCLCPP_INFO(this->get_logger(), "Duration: %f seconds", duration_time);
-    int32_t left_pos_duration = now_left_pos - left_pos,
-      right_pos_duration = now_right_pos - right_pos;
-    float left_theta = (left_duration * PI * 2) / MOTOR_POS;
-    float right_theta = (right_duration * PI * 2) / MOTOR_POS;
-    // float right_angular_velocity =
-    float velocity_duration;
-    if (left_velocity > right_velocity) {
-      velocity_duration = left_velocity - right_velocity;
-    }
-    else if (right_velocity > left_velocity) {
-      velocity_duration = right_velocity - left_velocity;
-    }
-    else {
-      velocity_duration = 0
-    }
-    float theta = velocity_duration / (2 * WHEEL_SEPARATION);
+    rclcpp::Duration duration_ = now_ - base_time_;
+    float duration_time_ = duration_.seconds();
   }
-  left_pos = now_left_pos;
-  right_pos = now_right_pos;
+  //   // angular velocity
   
-  base_time_ = now;
+  //   float duration_time_ = duration_.seconds();
+  //   RCLCPP_INFO(this->get_logger(), "Duration: %f seconds", duration_time_);
+  //   float velocity_duration_;
+  //   if (left_velocity > right_velocity) {
+  //     velocity_duration_ = left_velocity - right_velocity;
+  //   }
+  //   else if (right_velocity > left_velocity) {
+  //     velocity_duration_ = right_velocity - left_velocity;
+  //   }
+  //   else {
+  //     velocity_duration_ = 0
+  //   }
+  //   float angular_velocity_ = velocity_duration_ / (2 * WHEEL_SEPARATION);
+  //   theta_ = angular_velocity_ * duration_time_;}
+  x_ += msg->linear.x * duration_time * cos(theta_);
+  y_ += msg->linear.x * duration_time * sin(theta_);
+  theta_ += msg->angular.z * duration_time;
+
+  // オドメトリメッセージの作成
+  nav_msgs::msg::Odometry odom_msg;
+  odom_msg.header.stamp = now;
+  odom_msg.header.frame_id = "odom";
+  odom_msg.child_frame_id = "base_link";
+  
+  odom_msg.pose.pose.position.x = x_;
+  odom_msg.pose.pose.position.y = y_;
+  odom_msg.pose.pose.position.z = 0.0;
+  
+  tf2::Quaternion q;
+  q.setRPY(0, 0, theta_);
+  odom_msg.pose.pose.orientation.x = q.x();
+  odom_msg.pose.pose.orientation.y = q.y();
+  odom_msg.pose.pose.orientation.z = q.z();
+  odom_msg.pose.pose.orientation.w = q.w();
+  
+  // オドメトリを発行
+  odom_publisher_->publish(odom_msg);
+  
+  base_time_ = now_;
   
   dxl_comm_result = writeVelocity((int64_t)left_velocity, (int64_t)right_velocity);
 }

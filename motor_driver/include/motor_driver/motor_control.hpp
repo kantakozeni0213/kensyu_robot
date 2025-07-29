@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <cmath>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
@@ -11,6 +12,8 @@
 #include "dynamixel_sdk/dynamixel_sdk.h"
 #include "dynamixel_sdk_custom_interfaces/msg/set_position.hpp"
 #include "dynamixel_sdk_custom_interfaces/srv/get_position.hpp"
+#include "nav_msgs/msg/odometry.hpp"
+#include <tf2/LinearMath/Quaternion.h>
 
 // Control table address (Dynamixel X-series)
 #define ADDR_OPERATING_MODE                    11
@@ -80,6 +83,7 @@ public:
   using SetPosition = dynamixel_sdk_custom_interfaces::msg::SetPosition;
   using GetPosition = dynamixel_sdk_custom_interfaces::srv::GetPosition;
   using GetTwist = geometry_msgs::msg::Twist;
+  using PubOdometry = nav_msgs::msg::Odometry;
 
 
   VelocityNode();
@@ -91,10 +95,12 @@ public:
 
 private:
   rclcpp::Subscription<GetTwist>::SharedPtr velocity_subscriber_;
+  rclcpp::Publisher<PubOdometry>::SharedPtr odom_publisher_;
   rclcpp::Service<GetPosition>::SharedPtr get_position_server_;
-  rclcpp::Time now;
+  rclcpp::Time now_;
   rclcpp::Time base_time_;
-  int32_t left_pos, right_pos, now_left_pos, now_right_pos;
+  int32_t left_pos_, right_pos_, now_left_pos_, now_right_pos_;
+  float theta_, x_, y_;
 };
 
 #endif
