@@ -11,6 +11,9 @@ find_package(rclcpp REQUIRED)
 find_package(dynamixel_sdk_custom_interfaces REQUIRED)
 find_package(dynamixel_sdk REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 add_executable(motor_controller src/motor_controller.cpp)
 target_include_directories(motor_controller PUBLIC
@@ -23,6 +26,9 @@ ament_target_dependencies(
   "dynamixel_sdk_custom_interfaces"
   "dynamixel_sdk"
   "geometry_msgs"
+  "nav_msgs"
+  "tf2"
+  "tf2_ros"
 )
 
 install(TARGETS motor_controller

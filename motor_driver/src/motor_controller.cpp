@@ -1,7 +1,7 @@
 #include "motor_driver/motor_control.hpp"
 
 VelocityNode::VelocityNode()
-: Node("velocity_node"), base_time_(rclcpp::Time(0, 0, this->get_clock()->get_clock_type())), x_(0.0), y_(0.0), theta_(0.0), now_left_pos_(0.0), now_right_pos_(0.0),
+: Node("velocity_node"), base_time_(rclcpp::Time(0, 0, this->get_clock()->get_clock_type())), x_(0.0), y_(0.0), theta_(0.0), now_left_pos_(0.0), now_right_pos_(0.0)
 {
   RCLCPP_INFO(this->get_logger(), "Run velocity node");
   // qos setting
@@ -32,6 +32,8 @@ VelocityNode::VelocityNode()
       std::placeholders::_1));
   
   odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
+
+  tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 }
 
 VelocityNode::~VelocityNode()
@@ -46,8 +48,8 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
   right_velocity =  ((-1 * (msg->linear.x - (-1 * msg->angular.z * WHEEL_SEPARATION / 2))) * 41.69988758 / WHEEL_RADIUS);
   RCLCPP_INFO(get_logger(), "left_velocity: %f, right_velocity: %f", left_velocity, right_velocity);
 
-  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, LEFT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_left_pos, &dxl_error);
-  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, RIGHT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_right_pos, &dxl_error);
+  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, LEFT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_left_pos_, &dxl_error);
+  dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, RIGHT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_right_pos_, &dxl_error);
   
   // left_data = (left_velocity * 41.69988758) / WHEEL_RADIUS;
   // right_data = (right_velocity * 41.69988758) / WHEEL_RADIUS;
@@ -58,10 +60,8 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
 
   // TODO
   now_ = this->get_clock()->now();
-  if (!base_time_.nanoseconds() == 0){
-    rclcpp::Duration duration_ = now_ - base_time_;
-    float duration_time_ = duration_.seconds();
-  }
+  rclcpp::Duration duration_ = now_ - base_time_;
+  float duration_time_ = duration_.seconds();
   //   // angular velocity
   
   //   float duration_time_ = duration_.seconds();
@@ -78,13 +78,13 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
   //   }
   //   float angular_velocity_ = velocity_duration_ / (2 * WHEEL_SEPARATION);
   //   theta_ = angular_velocity_ * duration_time_;}
-  x_ += msg->linear.x * duration_time * cos(theta_);
-  y_ += msg->linear.x * duration_time * sin(theta_);
-  theta_ += msg->angular.z * duration_time;
+  x_ += msg->linear.x * duration_time_ * cos(theta_);
+  y_ += msg->linear.x * duration_time_ * sin(theta_);
+  theta_ += msg->angular.z * duration_time_;
 
-  // オドメトリメッセージの作成
+  // odom
   nav_msgs::msg::Odometry odom_msg;
-  odom_msg.header.stamp = now;
+  odom_msg.header.stamp = now_;
   odom_msg.header.frame_id = "odom";
   odom_msg.child_frame_id = "base_link";
   
@@ -98,9 +98,23 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
   odom_msg.pose.pose.orientation.y = q.y();
   odom_msg.pose.pose.orientation.z = q.z();
   odom_msg.pose.pose.orientation.w = q.w();
-  
-  // オドメトリを発行
+
+  //tf
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.stamp = this->get_clock()->now();
+  transform.header.frame_id = "odom";
+  transform.child_frame_id = "base_link";
+  transform.transform.translation.x = x_;
+  transform.transform.translation.y = y_;
+  transform.transform.translation.z = 0.0;
+  transform.transform.rotation.x = q.x();
+  transform.transform.rotation.y = q.y();
+  transform.transform.rotation.z = q.z();
+  transform.transform.rotation.w = q.w();	
+
+  // pub
   odom_publisher_->publish(odom_msg);
+  tf_broadcaster_->sendTransform(transform);
   
   base_time_ = now_;
   
