@@ -95,15 +95,18 @@ public:
 
   bool writeVelocity(int64_t left_value, int64_t right_value);
 
+  void updateOdom();
+
 private:
   rclcpp::Subscription<GetTwist>::SharedPtr velocity_subscriber_;
   rclcpp::Publisher<PubOdometry>::SharedPtr odom_publisher_;
   rclcpp::Service<GetPosition>::SharedPtr get_position_server_;
+  rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Time now_;
   rclcpp::Time base_time_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   int32_t left_pos_, right_pos_, now_left_pos_, now_right_pos_;
-  float theta_, x_, y_;
+  float theta_, x_, y_, right_velocity_, left_velocity_;
 };
 
 #endif

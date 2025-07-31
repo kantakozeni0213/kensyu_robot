@@ -34,6 +34,9 @@ VelocityNode::VelocityNode()
   odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
 
   tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
+  timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(100), std::bind(&OdomGenerator::updateOdom, this));
 }
 
 VelocityNode::~VelocityNode()
@@ -43,10 +46,9 @@ VelocityNode::~VelocityNode()
 
 void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
 {
-  float  right_velocity, left_velocity;
-  left_velocity =  ((msg->linear.x - (msg->angular.z * WHEEL_SEPARATION / 2)) * 41.69988758) / WHEEL_RADIUS;
-  right_velocity =  ((-1 * (msg->linear.x - (-1 * msg->angular.z * WHEEL_SEPARATION / 2))) * 41.69988758 / WHEEL_RADIUS);
-  RCLCPP_INFO(get_logger(), "left_velocity: %f, right_velocity: %f", left_velocity, right_velocity);
+  left_velocity_ =  ((msg->linear.x - (msg->angular.z * WHEEL_SEPARATION / 2)) * 41.69988758) / WHEEL_RADIUS;
+  right_velocity_ =  ((-1 * (msg->linear.x - (-1 * msg->angular.z * WHEEL_SEPARATION / 2))) * 41.69988758 / WHEEL_RADIUS);
+  // RCLCPP_INFO(get_logger(), "left_velocity: %f, right_velocity: %f", left_velocity_, right_velocity_);
 
   dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, LEFT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_left_pos_, &dxl_error);
   dxl_comm_result = packetHandler->read4ByteTxRx(portHandler, RIGHT_DXL_ID, ADDR_PRESENT_POSITION, (uint32_t*)&now_right_pos_, &dxl_error);
@@ -57,27 +59,15 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
                                          // w = ((0.229 * Goal_Velocity) * 3.14159265359 )/ 30
                                          // Goal_Velocity = (41.69988758 * V )/ r 
   */
+  
+  dxl_comm_result = writeVelocity((int64_t)left_velocity, (int64_t)right_velocity);
+}
 
-  // TODO
+void  VelocityNode::updateOdom()
+{
   now_ = this->get_clock()->now();
   rclcpp::Duration duration_ = now_ - base_time_;
   float duration_time_ = duration_.seconds();
-  //   // angular velocity
-  
-  //   float duration_time_ = duration_.seconds();
-  //   RCLCPP_INFO(this->get_logger(), "Duration: %f seconds", duration_time_);
-  //   float velocity_duration_;
-  //   if (left_velocity > right_velocity) {
-  //     velocity_duration_ = left_velocity - right_velocity;
-  //   }
-  //   else if (right_velocity > left_velocity) {
-  //     velocity_duration_ = right_velocity - left_velocity;
-  //   }
-  //   else {
-  //     velocity_duration_ = 0
-  //   }
-  //   float angular_velocity_ = velocity_duration_ / (2 * WHEEL_SEPARATION);
-  //   theta_ = angular_velocity_ * duration_time_;}
   x_ += msg->linear.x * duration_time_ * cos(theta_);
   y_ += msg->linear.x * duration_time_ * sin(theta_);
   theta_ += msg->angular.z * duration_time_;
@@ -117,8 +107,6 @@ void  VelocityNode::velocityCallBack(const std::shared_ptr<GetTwist> msg)
   tf_broadcaster_->sendTransform(transform);
   
   base_time_ = now_;
-  
-  dxl_comm_result = writeVelocity((int64_t)left_velocity, (int64_t)right_velocity);
 }
 
 bool VelocityNode::writeVelocity(int64_t left_value, int64_t right_value)
